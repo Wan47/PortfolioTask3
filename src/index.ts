@@ -2,6 +2,10 @@ import express from "express";
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
+const appName = process.env.APP_NAME || "Project Feature Request App";
+const appMessage =
+  process.env.APP_MESSAGE ||
+  "This simple web application was built with Node.js, Express, and TypeScript for Task 3.2. It includes multiple pages and a working form so the app is more than a basic landing page.";
 
 app.use(express.urlencoded({ extended: true }));
 
@@ -180,11 +184,8 @@ app.get("/", (_req, res) => {
       "Portfolio Task 3",
       `
         <section class="hero">
-          <h1>Project Feature Request App</h1>
-          <p>
-            This simple web application was built with Node.js, Express, and TypeScript for Task 3.2.
-            It includes multiple pages and a working form so the app is more than a basic landing page.
-          </p>
+          <h1>${appName}</h1>
+          <p>${appMessage}</p>
           <nav>
             <a href="/about">About This Project</a>
             <a class="secondary" href="/requests">View Submitted Requests</a>
