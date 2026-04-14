@@ -186,6 +186,7 @@ app.get("/", (_req, res) => {
         <section class="hero">
           <h1>${appName}</h1>
           <p>${appMessage}</p>
+          <p>This message is test for auto-deploy</p>
           <nav>
             <a href="/about">About This Project</a>
             <a class="secondary" href="/requests">View Submitted Requests</a>
