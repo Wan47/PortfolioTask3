@@ -1,4 +1,5 @@
 import express from "express";
+import { Pool } from "pg";
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
@@ -6,6 +7,7 @@ const appName = process.env.APP_NAME || "Project Feature Request App";
 const appMessage =
   process.env.APP_MESSAGE ||
   "This simple web application was built with Node.js, Express, and TypeScript for Task 3.2. It includes multiple pages and a working form so the app is more than a basic landing page.";
+const databaseUrl = process.env.DATABASE_URL;
 
 app.use(express.urlencoded({ extended: true }));
 
@@ -15,6 +17,7 @@ type Feature = {
 };
 
 type RequestEntry = {
+  id?: number;
   name: string;
   idea: string;
 };
@@ -34,9 +37,58 @@ const features: Feature[] = [
   },
 ];
 
-const requests: RequestEntry[] = [
-  { name: "William", idea: "Add deployment status tracking for the project." },
-];
+const pool = databaseUrl
+  ? new Pool({
+      connectionString: databaseUrl,
+      ssl: databaseUrl.includes("localhost") ? false : { rejectUnauthorized: false },
+    })
+  : null;
+
+async function ensureDatabase() {
+  if (!pool) {
+    return;
+  }
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS feature_requests (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      idea TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  const countResult = await pool.query<{ count: string }>(
+    "SELECT COUNT(*)::text AS count FROM feature_requests",
+  );
+
+  if (countResult.rows[0]?.count === "0") {
+    await pool.query(
+      "INSERT INTO feature_requests (name, idea) VALUES ($1, $2)",
+      ["William", "Add deployment status tracking for the project."],
+    );
+  }
+}
+
+async function getRequests(): Promise<RequestEntry[]> {
+  if (!pool) {
+    return [{ name: "Database not configured", idea: "Set DATABASE_URL to enable PostgreSQL storage." }];
+  }
+
+  const result = await pool.query<RequestEntry>(
+    "SELECT id, name, idea FROM feature_requests ORDER BY id DESC",
+  );
+
+  return result.rows;
+}
+
+async function addRequest(name: string, idea: string) {
+  if (!pool) {
+    return;
+  }
+
+  await pool.query("INSERT INTO feature_requests (name, idea) VALUES ($1, $2)", [name, idea]);
+}
 
 function renderPage(title: string, content: string) {
   return `
@@ -167,7 +219,7 @@ function renderPage(title: string, content: string) {
   `;
 }
 
-app.get("/", (_req, res) => {
+app.get("/", async (_req, res) => {
   const featureItems = features
     .map(
       (feature) => `
@@ -179,6 +231,10 @@ app.get("/", (_req, res) => {
     )
     .join("");
 
+  const databaseStatus = pool
+    ? "Requests are stored in the Render PostgreSQL database."
+    : "Database not configured yet. Add DATABASE_URL to enable persistence.";
+
   res.send(
     renderPage(
       "Portfolio Task 3",
@@ -186,7 +242,6 @@ app.get("/", (_req, res) => {
         <section class="hero">
           <h1>${appName}</h1>
           <p>${appMessage}</p>
-          <p>This message is test for auto-deploy</p>
           <nav>
             <a href="/about">About This Project</a>
             <a class="secondary" href="/requests">View Submitted Requests</a>
@@ -210,7 +265,7 @@ app.get("/", (_req, res) => {
             </div>
             <button class="button" type="submit">Submit Request</button>
           </form>
-          <p class="footer-note">Submitted ideas are stored temporarily while the app is running.</p>
+          <p class="footer-note">${databaseStatus}</p>
         </section>
       `,
     ),
@@ -238,7 +293,8 @@ app.get("/about", (_req, res) => {
   );
 });
 
-app.get("/requests", (_req, res) => {
+app.get("/requests", async (_req, res) => {
+  const requests = await getRequests();
   const requestItems = requests
     .map(
       (request) => `
@@ -273,17 +329,24 @@ app.get("/requests", (_req, res) => {
   );
 });
 
-app.post("/requests", (req, res) => {
+app.post("/requests", async (req, res) => {
   const name = String(req.body.name || "").trim();
   const idea = String(req.body.idea || "").trim();
 
   if (name && idea) {
-    requests.unshift({ name, idea });
+    await addRequest(name, idea);
   }
 
   res.redirect("/requests");
 });
 
-app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
-});
+ensureDatabase()
+  .then(() => {
+    app.listen(port, () => {
+      console.log(`Server running on http://localhost:${port}`);
+    });
+  })
+  .catch((error: unknown) => {
+    console.error("Failed to initialize database", error);
+    process.exit(1);
+  });
